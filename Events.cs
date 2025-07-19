@@ -1,6 +1,8 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Events;
+using CounterStrikeSharp.API.Modules.Utils;
+using CounterStrikeSharp.API.Modules.Timers;
 
 namespace GameflowControl;
 
@@ -21,6 +23,7 @@ public partial class GameflowControl
         // Reset ready system on map change
         ResetReadySystem();
     }
+
 
     private void RegisterListeners()
     {
@@ -77,7 +80,7 @@ public partial class GameflowControl
 
             // Mark player as ready when they spawn
             PlayerReady[player.Slot] = true;
-            player.PrintToChat("[Gameflow] You have been automatically marked as READY.");
+            player.PrintToChat(" \x04[Gameflow]\x01 You have been automatically marked as READY.");
             Console.WriteLine($"[GameflowControl] Player {player.PlayerName} auto-marked as ready on spawn.");
         });
 
@@ -90,6 +93,14 @@ public partial class GameflowControl
         var msg = @event.Text?.Trim().ToLower();
 
         if (player == null || !player.IsValid || player.IsBot) return HookResult.Continue;
+
+        // debug start knife round
+        if (msg == "!qw")
+        {
+            Console.WriteLine("[GameflowControl] Manual knife round start requested!");
+            StartKnifeRound();
+            return HookResult.Continue;
+        }
 
         if (msg == "!pause")
         {
@@ -133,6 +144,12 @@ public partial class GameflowControl
         {
             ShowDebugInfo(player);
         }
+        else if (waitingForSideChoice && (msg == "!switch" || msg == ".switch" || msg == "!stay" || msg == ".stay"))
+        {
+            HandleSideChoice(msg, player);
+            return HookResult.Continue;
+        }
+
 
         return HookResult.Continue;
     }
@@ -191,6 +208,7 @@ public partial class GameflowControl
 
     private HookResult OnRoundEnd(EventRoundEnd @event, GameEventInfo info)
     {
+
         foreach (var viewer in Utilities.GetPlayers())
         {
             if (viewer == null || !viewer.IsValid) continue;
@@ -228,10 +246,19 @@ public partial class GameflowControl
         DamageMatrix.Clear();
         HitMatrix.Clear();
 
+        // Check if this is a knife round
+        if (knifeRoundInProgress)
+        {
+            Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
+            Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
+            OnKnifeRoundEnd();
+            return HookResult.Continue;
+        }
+
         return HookResult.Continue;
     }
 
-    private bool IsValidPlayer(CCSPlayerController? player)
+    private static bool IsValidPlayer(CCSPlayerController? player)
     {
         return player != null && player.IsValid && !player.IsBot && player.PawnIsAlive;
     }
@@ -294,7 +321,7 @@ public partial class GameflowControl
                 attackerName = attacker.PlayerName + (attacker.IsBot ? " [BOT]" : "");
 
             requestingPlayer.PrintToChat($" \x01{attackerName} ({attackerEntry.Key}):");
-            
+
             foreach (var victimEntry in attackerEntry.Value)
             {
                 string victimName = "Unknown";
@@ -309,4 +336,51 @@ public partial class GameflowControl
         requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
     }
 
+
+    private void HandleSideChoice(string choice, CCSPlayerController player)
+    {
+        try
+        {
+            if (!waitingForSideChoice) return;
+
+            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} chose: {choice}");
+
+            if (choice == "!stay" || choice == ".stay")
+            {
+                // Keep current sides
+                Server.PrintToChatAll($" \x04[FACEIT]\x01 {player.PlayerName} chose to STAY. Starting match...");
+                Console.WriteLine("[GameflowControl] Side choice: STAY");
+            }
+            else if (choice == "!switch" || choice == ".switch")
+            {
+                // Switch sides
+                Server.PrintToChatAll($" \x04[FACEIT]\x01 {player.PlayerName} chose to SWITCH sides. Starting match...");
+                Console.WriteLine("[GameflowControl] Side choice: SWITCH");
+
+                // Switch teams
+                foreach (var p in Utilities.GetPlayers())
+                {
+                    if (p != null && p.IsValid)
+                    {
+                        if (p.Team == CsTeam.Terrorist)
+                            p.SwitchTeam(CsTeam.CounterTerrorist);
+                        else if (p.Team == CsTeam.CounterTerrorist)
+                            p.SwitchTeam(CsTeam.Terrorist);
+                    }
+                }
+            }
+
+            // End warmup and start match
+            waitingForSideChoice = false;
+            Server.ExecuteCommand("mp_halftime 1");
+            Server.ExecuteCommand("mp_warmup_end");
+
+            Console.WriteLine("[GameflowControl] Match started after side choice");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GameflowControl] ERROR in HandleSideChoice: {ex.Message}");
+            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+        }
+    }
 }
