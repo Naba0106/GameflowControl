@@ -14,6 +14,7 @@ namespace GameflowControl;
 [MinimumApiVersion(320)]
 public partial class GameflowControl : BasePlugin
 {
+    public string modeChatPrefix = " \x04[Gameflow Control]\x01";
     public override string ModuleName => "CS2 Gameflow Control";
     public override string ModuleAuthor => "Naranbat";
     public override string ModuleVersion => "1.0";
@@ -78,14 +79,14 @@ public partial class GameflowControl : BasePlugin
     {
         try
         {
-            Console.WriteLine("[GameflowControl] Starting FACEIT-style knife round...");
+            Console.WriteLine($"{modeChatPrefix} Starting knife round...");
             knifeRoundInProgress = true;
 
             // 🧠 Prevent pistol on spawn
             Server.ExecuteCommand("mp_ct_default_secondary none");
             Server.ExecuteCommand("mp_t_default_secondary none");
 
-            Server.PrintToChatAll(" \x04[Gameflow]\x01 All players ready! Match starting in 10 seconds...");
+            Server.PrintToChatAll($"{modeChatPrefix} All players ready! Match starting in 10 seconds...");
             Server.ExecuteCommand("mp_warmuptime 12");
             Server.ExecuteCommand("mp_warmup_pausetimer 0");
 
@@ -114,13 +115,13 @@ public partial class GameflowControl : BasePlugin
                     // Disable defuse kit
                     Server.ExecuteCommand("mp_defuser_allocation 0");
 
-                    Server.PrintToChatAll(" \x04[FACEIT Knife Round]\x01 Knife-only round started! Winning team will pick side.");
-                    Console.WriteLine("[GameflowControl] FACEIT-style knife round started successfully");
+                    Server.PrintToChatAll($"{modeChatPrefix} Knife-only round started! Winning team will pick side.");
+                    Console.WriteLine($"{modeChatPrefix} Knife round started successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[GameflowControl] ERROR in knife round timer: {ex.Message}");
-                    Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+                    Console.WriteLine($"{modeChatPrefix} ERROR in knife round timer: {ex.Message}");
+                    Console.WriteLine($"{modeChatPrefix} Stack trace: {ex.StackTrace}");
                 }
             });
         }
@@ -135,7 +136,7 @@ public partial class GameflowControl : BasePlugin
     {
         try
         {
-            Console.WriteLine("[GameflowControl] FACEIT-style knife round ended, determining winner...");
+            Console.WriteLine($"{modeChatPrefix} Knife round ended, determining winner...");
 
             if (!knifeRoundInProgress) return;
 
@@ -148,13 +149,13 @@ public partial class GameflowControl : BasePlugin
             if (tScore > ctScore)
             {
                 knifeRoundWinner = 2; // T team won
-                Server.PrintToChatAll(" \x04[FACEIT Knife Round]\x01 Terrorists won! Use !switch or !stay to choose side.");
+                Server.PrintToChatAll($"{modeChatPrefix} Terrorists won! Use !switch or !stay to choose side.");
                 Console.WriteLine("[GameflowControl] Terrorists won knife round");
             }
             else if (ctScore > tScore)
             {
                 knifeRoundWinner = 3; // CT team won
-                Server.PrintToChatAll(" \x04[FACEIT Knife Round]\x01 Counter-Terrorists won! Use !switch or !stay to choose side.");
+                Server.PrintToChatAll($"{modeChatPrefix} Counter-Terrorists won! Use !switch or !stay to choose side.");
                 Console.WriteLine("[GameflowControl] Counter-Terrorists won knife round");
             }
             else
@@ -163,7 +164,7 @@ public partial class GameflowControl : BasePlugin
                 var random = new Random();
                 knifeRoundWinner = random.Next(2, 4); // 2 or 3
                 string winnerTeam = knifeRoundWinner == 2 ? "Terrorists" : "Counter-Terrorists";
-                Server.PrintToChatAll($" \x04[FACEIT Knife Round]\x01 Tie! {winnerTeam} randomly selected. Use !switch or !stay to choose side.");
+                Server.PrintToChatAll($"{modeChatPrefix} Tie! {winnerTeam} randomly selected. Use !switch or !stay to choose side.");
                 Console.WriteLine($"[GameflowControl] Tie in knife round, {winnerTeam} randomly selected");
             }
 
@@ -180,6 +181,11 @@ public partial class GameflowControl : BasePlugin
 
             // Reset match settings for actual match
             Server.ExecuteCommand("mp_freezetime 15");
+
+            Server.ExecuteCommand("mp_death_drop_gun 1");
+            Server.ExecuteCommand("mp_death_drop_defuser 1");
+            Server.ExecuteCommand("mp_death_drop_taser 1");
+            Server.ExecuteCommand("mp_buy_allow_grenades 1");
             Console.WriteLine("[GameflowControl] 60-second warmup started, waiting for side choice...");
 
             // Auto-start match after 60 seconds if no choice made
@@ -188,8 +194,8 @@ public partial class GameflowControl : BasePlugin
                 if (waitingForSideChoice)
                 {
                     Console.WriteLine("[GameflowControl] 60 seconds passed, no side choice made. Auto-starting match...");
-                    Server.PrintToChatAll(" \x04[FACEIT]\x01 No side choice made in 60 seconds. Auto-starting match...");
-                   
+                    Server.PrintToChatAll($"{modeChatPrefix} No side choice made in 60 seconds. Auto-starting match...");
+
                     Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
                     Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
                     Server.ExecuteCommand("mp_startmoney 800");
@@ -211,6 +217,137 @@ public partial class GameflowControl : BasePlugin
         catch (Exception ex)
         {
             Console.WriteLine($"[GameflowControl] ERROR in OnKnifeRoundEnd: {ex.Message}");
+            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+        }
+    }
+
+
+    private string GetPlayerKey(CCSPlayerController player)
+    {
+        return player.IsBot ? $"BOT_{player.PlayerName}" : player.SteamID.ToString();
+    }
+
+    private static bool IsValidPlayer(CCSPlayerController? player)
+    {
+        return player != null && player.IsValid && !player.IsBot;// && player.PawnIsAlive;
+    }
+
+    private void ShowDamageStats(CCSPlayerController requestingPlayer)
+    {
+        string viewerKey = GetPlayerKey(requestingPlayer);
+        bool hasDamage = false;
+
+        requestingPlayer.PrintToChat($"{modeChatPrefix} Current Round Damage");
+        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
+
+        foreach (var other in Utilities.GetPlayers())
+        {
+            if (other == null || !other.IsValid || other == requestingPlayer) continue;
+            if (other.Team == requestingPlayer.Team) continue; // Skip teammates
+
+            string otherKey = GetPlayerKey(other);
+
+            int toDamage = DamageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+            int fromDamage = DamageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+
+            int toHits = HitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+            int fromHits = HitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+
+            if (toDamage > 0 || fromDamage > 0)
+            {
+                hasDamage = true;
+                int currentHealth = 0;
+                if (other.PawnIsAlive && other.Pawn?.Value != null)
+                    currentHealth = Math.Max(0, (int)other.Pawn.Value.Health);
+
+                string botTag = other.IsBot ? " [BOT]" : "";
+                requestingPlayer.PrintToChat($"{modeChatPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
+            }
+        }
+
+        if (!hasDamage)
+        {
+            requestingPlayer.PrintToChat($"{modeChatPrefix} No damage dealt this round yet.");
+        }
+
+        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
+    }
+
+    private void ShowDebugInfo(CCSPlayerController requestingPlayer)
+    {
+        requestingPlayer.PrintToChat(" \x04[DEBUG] Damage Matrix Info\x01");
+        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
+
+        requestingPlayer.PrintToChat($" \x01 DamageMatrix entries: {DamageMatrix.Count}");
+        requestingPlayer.PrintToChat($" \x01 HitMatrix entries: {HitMatrix.Count}");
+
+        requestingPlayer.PrintToChat(" \x01--- Damage Matrix ---");
+        foreach (var attackerEntry in DamageMatrix)
+        {
+            string attackerName = "Unknown";
+            var attacker = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == attackerEntry.Key);
+            if (attacker != null)
+                attackerName = attacker.PlayerName + (attacker.IsBot ? " [BOT]" : "");
+
+            requestingPlayer.PrintToChat($" \x01{attackerName} ({attackerEntry.Key}):");
+
+            foreach (var victimEntry in attackerEntry.Value)
+            {
+                string victimName = "Unknown";
+                var victim = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == victimEntry.Key);
+                if (victim != null)
+                    victimName = victim.PlayerName + (victim.IsBot ? " [BOT]" : "");
+
+                requestingPlayer.PrintToChat($" \x01  → {victimName}: {victimEntry.Value} damage");
+            }
+        }
+
+        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
+    }
+
+    private void HandleSideChoice(string choice, CCSPlayerController player)
+    {
+        try
+        {
+            if (!waitingForSideChoice) return;
+
+            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} chose: {choice}");
+
+            if (choice == "!stay" || choice == ".stay")
+            {
+                // Keep current sides
+                Server.PrintToChatAll($"{modeChatPrefix} {player.PlayerName} chose to STAY. Starting match...");
+                Console.WriteLine("[GameflowControl] Side choice: STAY");
+            }
+            else if (choice == "!switch" || choice == ".switch")
+            {
+                // Switch sides
+                Server.PrintToChatAll($"{modeChatPrefix} {player.PlayerName} chose to SWITCH sides. Starting match...");
+                Console.WriteLine("[GameflowControl] Side choice: SWITCH");
+
+                // Switch teams
+                foreach (var p in Utilities.GetPlayers())
+                {
+                    if (p != null && p.IsValid)
+                    {
+                        if (p.Team == CsTeam.Terrorist)
+                            p.SwitchTeam(CsTeam.CounterTerrorist);
+                        else if (p.Team == CsTeam.CounterTerrorist)
+                            p.SwitchTeam(CsTeam.Terrorist);
+                    }
+                }
+            }
+
+            // End warmup and start match
+            waitingForSideChoice = false;
+            Server.ExecuteCommand("mp_halftime 1");
+            Server.ExecuteCommand("mp_warmup_end");
+
+            Console.WriteLine("[GameflowControl] Match started after side choice");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GameflowControl] ERROR in HandleSideChoice: {ex.Message}");
             Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
         }
     }

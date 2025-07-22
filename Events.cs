@@ -16,8 +16,11 @@ public partial class GameflowControl
             Server.ExecuteCommand("bot_quota 10");
             Server.ExecuteCommand("bot_quota_mode fill");
             Server.ExecuteCommand("mp_warmup_pausetimer 1");
-
-            Console.WriteLine("[GameflowControl] Map started, commands executed in next frame.");
+            Server.ExecuteCommand("mp_death_drop_gun 0");
+            Server.ExecuteCommand("mp_buy_allow_grenades 0");
+            // Server.ExecuteCommand("mp_death_drop_defuser 0");
+            // Server.ExecuteCommand("mp_death_drop_taser 0");
+            Console.WriteLine("{modeChatPrefix} Map started, commands executed in next frame.");
         });
 
         // Reset ready system on map change
@@ -44,11 +47,11 @@ public partial class GameflowControl
             if (!player.IsBot)
             {
                 PlayerReady[player.Slot] = false;
-                Console.WriteLine($"[GameflowControl] Player {player.PlayerName} connected and marked as not ready.");
+                Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} connected and marked as not ready.");
             }
             else
             {
-                Console.WriteLine($"[GameflowControl] Bot {player.PlayerName} connected (excluded from ready system).");
+                Console.WriteLine($"{modeChatPrefix} Bot {player.PlayerName} connected (excluded from ready system).");
             }
         }
         return HookResult.Continue;
@@ -60,7 +63,7 @@ public partial class GameflowControl
         if (player != null && player.IsValid)
         {
             PlayerReady.Remove(player.Slot);
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} disconnected and removed from ready list.");
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} disconnected and removed from ready list.");
         }
         return HookResult.Continue;
     }
@@ -68,21 +71,39 @@ public partial class GameflowControl
     private HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
     {
         var player = @event.Userid;
+        Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} spawned.");
+        Console.WriteLine($"{modeChatPrefix} IsValidPlayer: {IsValidPlayer(player)}");
+        Console.WriteLine($"{modeChatPrefix} IsBot: {player.IsBot}");
+        Console.WriteLine($"{modeChatPrefix} IsAlive: {player.PawnIsAlive}");
+        Console.WriteLine($"{modeChatPrefix} InGameMoneyServices: {player.InGameMoneyServices}");
+        Console.WriteLine($"{modeChatPrefix} Account: {player.InGameMoneyServices?.Account}");
+        Console.WriteLine($"{modeChatPrefix} StartAccount: {player.InGameMoneyServices?.StartAccount}");
+        Console.WriteLine($"{modeChatPrefix} TotalCashSpent: {player.InGameMoneyServices?.TotalCashSpent}");
         if (!IsValidPlayer(player)) return HookResult.Continue;
 
-        Server.NextFrame(() =>
+        if (_readySystemEnabled)
         {
-            // Only handle real players, not bots
-            if (player.IsBot) return;
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} spawned and money set to 16000.");
+            // Set player money to 16000 when ready system is disabled
+            if (player.InGameMoneyServices != null)
+            {
+                player.InGameMoneyServices.Account = 16000;
+            }
+        }
 
-            if (!PlayerReady.ContainsKey(player.Slot) || PlayerReady[player.Slot])
-                return;
+        // Server.NextFrame(() =>
+        // {
+        //     // Only handle real players, not bots
+        //     if (player.IsBot) return;
 
-            // Mark player as ready when they spawn
-            PlayerReady[player.Slot] = true;
-            player.PrintToChat(" \x04[Gameflow]\x01 You have been automatically marked as READY.");
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} auto-marked as ready on spawn.");
-        });
+        //     if (!PlayerReady.ContainsKey(player.Slot) || PlayerReady[player.Slot])
+        //         return;
+
+        //     // Mark player as ready when they spawn
+        //     PlayerReady[player.Slot] = true;
+        //     player.PrintToChat($"{modeChatPrefix} You have been automatically marked as READY.");
+        //     Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} auto-marked as ready on spawn.");
+        // });
 
         return HookResult.Continue;
     }
@@ -97,7 +118,7 @@ public partial class GameflowControl
         // debug start knife round
         if (msg == "!qw")
         {
-            Console.WriteLine("[GameflowControl] Manual knife round start requested!");
+            Console.WriteLine("{modeChatPrefix} Manual knife round start requested!");
             StartKnifeRound();
             return HookResult.Continue;
         }
@@ -105,27 +126,27 @@ public partial class GameflowControl
         if (msg == "!pause")
         {
             Server.ExecuteCommand("mp_pause_match");
-            player.PrintToChat("[Gameflow] Match paused.");
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} paused the match.");
+            player.PrintToChat($"{modeChatPrefix} Match paused.");
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} paused the match.");
         }
         else if (msg == "!unpause")
         {
             Server.ExecuteCommand("mp_unpause_match");
-            player.PrintToChat("[Gameflow] Match unpaused.");
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} unpaused the match.");
+            player.PrintToChat($"{modeChatPrefix} Match unpaused.");
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} unpaused the match.");
         }
         else if (msg == "!ready" || msg == ".r" || msg == ".ready" && _readySystemEnabled)
         {
             PlayerReady[player.Slot] = true;
-            player.PrintToChat("[Gameflow] You are now marked as READY.");
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} marked themselves as ready.");
+            player.PrintToChat($"{modeChatPrefix} You are now marked as READY.");
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} marked themselves as ready.");
             CheckReadyStatus();
         }
         else if (msg == "!notready" || msg == ".nr" || msg == ".notready" && _readySystemEnabled)
         {
             PlayerReady[player.Slot] = false;
-            player.PrintToChat("[Gameflow] You are now marked as NOT READY.");
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} marked themselves as not ready.");
+            player.PrintToChat($"{modeChatPrefix} You are now marked as NOT READY.");
+            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} marked themselves as not ready.");
             CheckReadyStatus();
         }
         else if (msg == "!status")
@@ -134,7 +155,7 @@ public partial class GameflowControl
             var realPlayers = Utilities.GetPlayers().Where(p => p != null && p.IsValid && !p.IsBot).ToList();
             int total = realPlayers.Count;
             int ready = PlayerReady.Values.Count(v => v);
-            player.PrintToChat($"[Gameflow] Ready Status: {ready}/{total} real players are ready (bots excluded).");
+            player.PrintToChat($"{modeChatPrefix} Ready Status: {ready}/{total} real players are ready (bots excluded).");
         }
         else if (msg == "!damage")
         {
@@ -152,11 +173,6 @@ public partial class GameflowControl
 
 
         return HookResult.Continue;
-    }
-
-    private string GetPlayerKey(CCSPlayerController player)
-    {
-        return player.IsBot ? $"BOT_{player.PlayerName}" : player.SteamID.ToString();
     }
 
     private HookResult OnPlayerHurt(EventPlayerHurt @event, GameEventInfo info)
@@ -200,8 +216,8 @@ public partial class GameflowControl
         HitMatrix[attackerKey][victimKey] = HitMatrix[attackerKey].GetValueOrDefault(victimKey) + 1;
 
         // Debug log
-        Console.WriteLine($"[Gameflow] {attacker.PlayerName} → {victim.PlayerName}: +{cappedDamage} dmg (capped)");
-        Console.WriteLine($"[DEBUG] {attacker.PlayerName} → {victim.PlayerName}: raw={rawDamage}, actual={actualDamage}, existing={existingDamage}, capped={cappedDamage}");
+        Console.WriteLine($"{modeChatPrefix} {attacker.PlayerName} → {victim.PlayerName}: +{cappedDamage} dmg (capped)");
+        Console.WriteLine($"{modeChatPrefix} {attacker.PlayerName} → {victim.PlayerName}: raw={rawDamage}, actual={actualDamage}, existing={existingDamage}, capped={cappedDamage}");
 
         return HookResult.Continue;
     }
@@ -215,7 +231,7 @@ public partial class GameflowControl
 
             string viewerKey = GetPlayerKey(viewer);
 
-            viewer.PrintToChat(" \x04[FACEIT^]\x01 Round Summary");
+            viewer.PrintToChat($"{modeChatPrefix} Round Summary");
             viewer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
 
             foreach (var other in Utilities.GetPlayers())
@@ -236,7 +252,7 @@ public partial class GameflowControl
                     currentHealth = Math.Max(0, (int)other.Pawn.Value.Health);
 
                 string botTag = other.IsBot ? " [BOT]" : "";
-                viewer.PrintToChat($" \x04[FACEIT^]\x01 To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
+                viewer.PrintToChat($"{modeChatPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
             }
 
             viewer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
@@ -258,129 +274,4 @@ public partial class GameflowControl
         return HookResult.Continue;
     }
 
-    private static bool IsValidPlayer(CCSPlayerController? player)
-    {
-        return player != null && player.IsValid && !player.IsBot && player.PawnIsAlive;
-    }
-
-    private void ShowDamageStats(CCSPlayerController requestingPlayer)
-    {
-        string viewerKey = GetPlayerKey(requestingPlayer);
-        bool hasDamage = false;
-
-        requestingPlayer.PrintToChat(" \x04[FACEIT^]\x01 Current Round Damage");
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-
-        foreach (var other in Utilities.GetPlayers())
-        {
-            if (other == null || !other.IsValid || other == requestingPlayer) continue;
-            if (other.Team == requestingPlayer.Team) continue; // Skip teammates
-
-            string otherKey = GetPlayerKey(other);
-
-            int toDamage = DamageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-            int fromDamage = DamageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
-
-            int toHits = HitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-            int fromHits = HitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
-
-            if (toDamage > 0 || fromDamage > 0)
-            {
-                hasDamage = true;
-                int currentHealth = 0;
-                if (other.PawnIsAlive && other.Pawn?.Value != null)
-                    currentHealth = Math.Max(0, (int)other.Pawn.Value.Health);
-
-                string botTag = other.IsBot ? " [BOT]" : "";
-                requestingPlayer.PrintToChat($" \x04[FACEIT^]\x01 To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
-            }
-        }
-
-        if (!hasDamage)
-        {
-            requestingPlayer.PrintToChat(" \x04[FACEIT^]\x01 No damage dealt this round yet.");
-        }
-
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-    }
-
-    private void ShowDebugInfo(CCSPlayerController requestingPlayer)
-    {
-        requestingPlayer.PrintToChat(" \x04[DEBUG] Damage Matrix Info\x01");
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-
-        requestingPlayer.PrintToChat($" \x01 DamageMatrix entries: {DamageMatrix.Count}");
-        requestingPlayer.PrintToChat($" \x01 HitMatrix entries: {HitMatrix.Count}");
-
-        requestingPlayer.PrintToChat(" \x01--- Damage Matrix ---");
-        foreach (var attackerEntry in DamageMatrix)
-        {
-            string attackerName = "Unknown";
-            var attacker = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == attackerEntry.Key);
-            if (attacker != null)
-                attackerName = attacker.PlayerName + (attacker.IsBot ? " [BOT]" : "");
-
-            requestingPlayer.PrintToChat($" \x01{attackerName} ({attackerEntry.Key}):");
-
-            foreach (var victimEntry in attackerEntry.Value)
-            {
-                string victimName = "Unknown";
-                var victim = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == victimEntry.Key);
-                if (victim != null)
-                    victimName = victim.PlayerName + (victim.IsBot ? " [BOT]" : "");
-
-                requestingPlayer.PrintToChat($" \x01  → {victimName}: {victimEntry.Value} damage");
-            }
-        }
-
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-    }
-
-
-    private void HandleSideChoice(string choice, CCSPlayerController player)
-    {
-        try
-        {
-            if (!waitingForSideChoice) return;
-
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} chose: {choice}");
-
-            if (choice == "!stay" || choice == ".stay")
-            {
-                // Keep current sides
-                Server.PrintToChatAll($" \x04[FACEIT]\x01 {player.PlayerName} chose to STAY. Starting match...");
-                Console.WriteLine("[GameflowControl] Side choice: STAY");
-            }
-            else if (choice == "!switch" || choice == ".switch")
-            {
-                // Switch sides
-                Server.PrintToChatAll($" \x04[FACEIT]\x01 {player.PlayerName} chose to SWITCH sides. Starting match...");
-                Console.WriteLine("[GameflowControl] Side choice: SWITCH");
-
-                // Switch teams
-                foreach (var p in Utilities.GetPlayers())
-                {
-                    if (p != null && p.IsValid)
-                    {
-                        if (p.Team == CsTeam.Terrorist)
-                            p.SwitchTeam(CsTeam.CounterTerrorist);
-                        else if (p.Team == CsTeam.CounterTerrorist)
-                            p.SwitchTeam(CsTeam.Terrorist);
-                    }
-                }
-            }
-
-            // End warmup and start match
-            waitingForSideChoice = false;
-            Server.ExecuteCommand("mp_halftime 1");
-            Server.ExecuteCommand("mp_warmup_end");
-
-            Console.WriteLine("[GameflowControl] Match started after side choice");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[GameflowControl] ERROR in HandleSideChoice: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
-        }
-    }
 }
