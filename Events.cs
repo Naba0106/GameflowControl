@@ -11,6 +11,7 @@ public partial class GameflowControl
 
     private void OnMapStart(string mapName)
     {
+
         Server.NextFrame(() =>
         {
             Server.ExecuteCommand("bot_quota 10");
@@ -20,11 +21,12 @@ public partial class GameflowControl
             Server.ExecuteCommand("mp_buy_allow_grenades 0");
             // Server.ExecuteCommand("mp_death_drop_defuser 0");
             // Server.ExecuteCommand("mp_death_drop_taser 0");
-            Console.WriteLine("{modeChatPrefix} Map started, commands executed in next frame.");
+            Console.WriteLine("{moduleChaPrefix} Map started, commands executed in next frame.");
         });
 
         // Reset ready system on map change
         ResetReadySystem();
+        ResetGame();
     }
 
 
@@ -47,11 +49,11 @@ public partial class GameflowControl
             if (!player.IsBot)
             {
                 PlayerReady[player.Slot] = false;
-                Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} connected and marked as not ready.");
+                Console.WriteLine($"{ModuleName} Player {player.PlayerName} connected and marked as not ready.");
             }
             else
             {
-                Console.WriteLine($"{modeChatPrefix} Bot {player.PlayerName} connected (excluded from ready system).");
+                Console.WriteLine($"{ModuleName} Bot {player.PlayerName} connected (excluded from ready system).");
             }
         }
         return HookResult.Continue;
@@ -63,7 +65,7 @@ public partial class GameflowControl
         if (player != null && player.IsValid)
         {
             PlayerReady.Remove(player.Slot);
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} disconnected and removed from ready list.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} disconnected and removed from ready list.");
         }
         return HookResult.Continue;
     }
@@ -71,19 +73,19 @@ public partial class GameflowControl
     private HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
     {
         var player = @event.Userid;
-        Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} spawned.");
-        Console.WriteLine($"{modeChatPrefix} IsValidPlayer: {IsValidPlayer(player)}");
-        Console.WriteLine($"{modeChatPrefix} IsBot: {player.IsBot}");
-        Console.WriteLine($"{modeChatPrefix} IsAlive: {player.PawnIsAlive}");
-        Console.WriteLine($"{modeChatPrefix} InGameMoneyServices: {player.InGameMoneyServices}");
-        Console.WriteLine($"{modeChatPrefix} Account: {player.InGameMoneyServices?.Account}");
-        Console.WriteLine($"{modeChatPrefix} StartAccount: {player.InGameMoneyServices?.StartAccount}");
-        Console.WriteLine($"{modeChatPrefix} TotalCashSpent: {player.InGameMoneyServices?.TotalCashSpent}");
+        Console.WriteLine($"{ModuleName} Player {player.PlayerName} spawned.");
+        Console.WriteLine($"{ModuleName} IsValidPlayer: {IsValidPlayer(player)}");
+        Console.WriteLine($"{ModuleName} IsBot: {player.IsBot}");
+        Console.WriteLine($"{ModuleName} IsAlive: {player.PawnIsAlive}");
+        Console.WriteLine($"{ModuleName} InGameMoneyServices: {player.InGameMoneyServices}");
+        Console.WriteLine($"{ModuleName} Account: {player.InGameMoneyServices?.Account}");
+        Console.WriteLine($"{ModuleName} StartAccount: {player.InGameMoneyServices?.StartAccount}");
+        Console.WriteLine($"{ModuleName} TotalCashSpent: {player.InGameMoneyServices?.TotalCashSpent}");
         if (!IsValidPlayer(player)) return HookResult.Continue;
 
         if (_readySystemEnabled)
         {
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} spawned and money set to 16000.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} spawned and money set to 16000.");
             // Set player money to 16000 when ready system is disabled
             if (player.InGameMoneyServices != null)
             {
@@ -101,8 +103,8 @@ public partial class GameflowControl
 
         //     // Mark player as ready when they spawn
         //     PlayerReady[player.Slot] = true;
-        //     player.PrintToChat($"{modeChatPrefix} You have been automatically marked as READY.");
-        //     Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} auto-marked as ready on spawn.");
+        //     player.PrintToChat($"{moduleChaPrefix} You have been automatically marked as READY.");
+        //     Console.WriteLine($"{ModuleName} Player {player.PlayerName} auto-marked as ready on spawn.");
         // });
 
         return HookResult.Continue;
@@ -118,7 +120,7 @@ public partial class GameflowControl
         // debug start knife round
         if (msg == "!qw")
         {
-            Console.WriteLine("{modeChatPrefix} Manual knife round start requested!");
+            Console.WriteLine($"{ModuleName} Manual knife round start requested!");
             StartKnifeRound();
             return HookResult.Continue;
         }
@@ -126,27 +128,27 @@ public partial class GameflowControl
         if (msg == "!pause")
         {
             Server.ExecuteCommand("mp_pause_match");
-            player.PrintToChat($"{modeChatPrefix} Match paused.");
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} paused the match.");
+            player.PrintToChat($"{moduleChaPrefix} Match paused.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} paused the match.");
         }
         else if (msg == "!unpause")
         {
             Server.ExecuteCommand("mp_unpause_match");
-            player.PrintToChat($"{modeChatPrefix} Match unpaused.");
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} unpaused the match.");
+            player.PrintToChat($"{moduleChaPrefix} Match unpaused.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} unpaused the match.");
         }
         else if (msg == "!ready" || msg == ".r" || msg == ".ready" && _readySystemEnabled)
         {
             PlayerReady[player.Slot] = true;
-            player.PrintToChat($"{modeChatPrefix} You are now marked as READY.");
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} marked themselves as ready.");
+            player.PrintToChat($"{moduleChaPrefix} You are now marked as READY.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} marked themselves as ready.");
             CheckReadyStatus();
         }
         else if (msg == "!notready" || msg == ".nr" || msg == ".notready" && _readySystemEnabled)
         {
             PlayerReady[player.Slot] = false;
-            player.PrintToChat($"{modeChatPrefix} You are now marked as NOT READY.");
-            Console.WriteLine($"{modeChatPrefix} Player {player.PlayerName} marked themselves as not ready.");
+            player.PrintToChat($"{moduleChaPrefix} You are now marked as NOT READY.");
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} marked themselves as not ready.");
             CheckReadyStatus();
         }
         else if (msg == "!status")
@@ -155,7 +157,7 @@ public partial class GameflowControl
             var realPlayers = Utilities.GetPlayers().Where(p => p != null && p.IsValid && !p.IsBot).ToList();
             int total = realPlayers.Count;
             int ready = PlayerReady.Values.Count(v => v);
-            player.PrintToChat($"{modeChatPrefix} Ready Status: {ready}/{total} real players are ready (bots excluded).");
+            player.PrintToChat($"{moduleChaPrefix} Ready Status: {ready}/{total} real players are ready (bots excluded).");
         }
         else if (msg == "!damage")
         {
@@ -216,8 +218,8 @@ public partial class GameflowControl
         HitMatrix[attackerKey][victimKey] = HitMatrix[attackerKey].GetValueOrDefault(victimKey) + 1;
 
         // Debug log
-        Console.WriteLine($"{modeChatPrefix} {attacker.PlayerName} → {victim.PlayerName}: +{cappedDamage} dmg (capped)");
-        Console.WriteLine($"{modeChatPrefix} {attacker.PlayerName} → {victim.PlayerName}: raw={rawDamage}, actual={actualDamage}, existing={existingDamage}, capped={cappedDamage}");
+        Console.WriteLine($"{ModuleName} {attacker.PlayerName} → {victim.PlayerName}: +{cappedDamage} dmg (capped)");
+        Console.WriteLine($"{ModuleName} {attacker.PlayerName} → {victim.PlayerName}: raw={rawDamage}, actual={actualDamage}, existing={existingDamage}, capped={cappedDamage}");
 
         return HookResult.Continue;
     }
@@ -231,7 +233,7 @@ public partial class GameflowControl
 
             string viewerKey = GetPlayerKey(viewer);
 
-            viewer.PrintToChat($"{modeChatPrefix} Round Summary");
+            viewer.PrintToChat($"{moduleChaPrefix} Round Summary");
             viewer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
 
             foreach (var other in Utilities.GetPlayers())
@@ -252,7 +254,7 @@ public partial class GameflowControl
                     currentHealth = Math.Max(0, (int)other.Pawn.Value.Health);
 
                 string botTag = other.IsBot ? " [BOT]" : "";
-                viewer.PrintToChat($"{modeChatPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
+                viewer.PrintToChat($"{moduleChaPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
             }
 
             viewer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");

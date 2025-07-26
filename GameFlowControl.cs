@@ -14,7 +14,7 @@ namespace GameflowControl;
 [MinimumApiVersion(320)]
 public partial class GameflowControl : BasePlugin
 {
-    public string modeChatPrefix = " \x04[Gameflow Control]\x01";
+    public string moduleChaPrefix = " \x04[Gameflow Control]\x01";
     public override string ModuleName => "CS2 Gameflow Control";
     public override string ModuleAuthor => "Naranbat";
     public override string ModuleVersion => "1.0";
@@ -26,7 +26,9 @@ public partial class GameflowControl : BasePlugin
 
     private bool knifeRoundInProgress = false;
     private bool waitingForSideChoice = false;
-    private int knifeRoundWinner = 0; // 2 = T, 3 = CT
+    private CsTeam knifeRoundWinner = CsTeam.None; // 2 = T, 3 = CT
+    private CounterStrikeSharp.API.Modules.Timers.Timer? sideChoiceTimer;
+
     public override void Load(bool hotReload)
     {
         try
@@ -34,13 +36,33 @@ public partial class GameflowControl : BasePlugin
             RegisterListeners();
             // Start ready status timer
             AddTimer(10.0f, () => CheckReadyStatus(), TimerFlags.REPEAT | TimerFlags.STOP_ON_MAPCHANGE);
-            Console.WriteLine("[GameflowControl] Plugin loaded successfully!");
+            Console.WriteLine($"{ModuleName} Plugin loaded successfully!");
+            // Server.NextFrame(() =>
+            // {
+            //     try
+            //     {
+            //         SpawnBanner();
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         Console.WriteLine($"[MapBanner] Алдаа: {ex.Message}");
+            //     }
+            // });
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[GameflowControl] ERROR during Load: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"{ModuleName} ERROR during Load: {ex.Message}");
+            Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
         }
+    }
+
+    private void ResetGame()
+    {
+        knifeRoundInProgress = false;
+        waitingForSideChoice = false;
+        knifeRoundWinner = CsTeam.None;
+        sideChoiceTimer?.Kill();
+        sideChoiceTimer = null;
     }
 
     private void ResetReadySystem()
@@ -59,19 +81,19 @@ public partial class GameflowControl : BasePlugin
             int total = realPlayers.Count;
             int ready = PlayerReady.Values.Count(v => v);
 
-            Console.WriteLine($"[GameflowControl] {ready}/{total} real players are ready (bots excluded).");
+            Console.WriteLine($"{ModuleName} {ready}/{total} real players are ready (bots excluded).");
 
             if (total > 0 && ready == total)
             {
-                Console.WriteLine("[GameflowControl] All players ready! Starting match in 10 seconds...");
+                Console.WriteLine($"{ModuleName} All players ready! Starting match in 10 seconds...");
                 _readySystemEnabled = false;
                 StartKnifeRound();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[GameflowControl] ERROR in CheckReadyStatus: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"{ModuleName} ERROR in CheckReadyStatus: {ex.Message}");
+            Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
         }
     }
 
@@ -79,14 +101,14 @@ public partial class GameflowControl : BasePlugin
     {
         try
         {
-            Console.WriteLine($"{modeChatPrefix} Starting knife round...");
+            Console.WriteLine($"{ModuleName} Starting knife round...");
             knifeRoundInProgress = true;
 
             // 🧠 Prevent pistol on spawn
             Server.ExecuteCommand("mp_ct_default_secondary none");
             Server.ExecuteCommand("mp_t_default_secondary none");
 
-            Server.PrintToChatAll($"{modeChatPrefix} All players ready! Match starting in 10 seconds...");
+            Server.PrintToChatAll($"{moduleChaPrefix} All players ready! Match starting in 10 seconds...");
             Server.ExecuteCommand("mp_warmuptime 12");
             Server.ExecuteCommand("mp_warmup_pausetimer 0");
 
@@ -115,20 +137,20 @@ public partial class GameflowControl : BasePlugin
                     // Disable defuse kit
                     Server.ExecuteCommand("mp_defuser_allocation 0");
 
-                    Server.PrintToChatAll($"{modeChatPrefix} Knife-only round started! Winning team will pick side.");
-                    Console.WriteLine($"{modeChatPrefix} Knife round started successfully");
+                    Server.PrintToChatAll($"{moduleChaPrefix} Knife-only round started! Winning team will pick side.");
+                    Console.WriteLine($"{ModuleName} Knife round started successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{modeChatPrefix} ERROR in knife round timer: {ex.Message}");
-                    Console.WriteLine($"{modeChatPrefix} Stack trace: {ex.StackTrace}");
+                    Console.WriteLine($"{ModuleName} ERROR in knife round timer: {ex.Message}");
+                    Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
                 }
             });
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[GameflowControl] ERROR in StartKnifeRound: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"{ModuleName} ERROR in StartKnifeRound: {ex.Message}");
+            Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
         }
     }
 
@@ -136,7 +158,7 @@ public partial class GameflowControl : BasePlugin
     {
         try
         {
-            Console.WriteLine($"{modeChatPrefix} Knife round ended, determining winner...");
+            Console.WriteLine($"{ModuleName} Knife round ended, determining winner...");
 
             if (!knifeRoundInProgress) return;
 
@@ -144,37 +166,37 @@ public partial class GameflowControl : BasePlugin
             var tScore = Utilities.GetPlayers().Count(p => p.Team == CsTeam.Terrorist && p.PawnIsAlive);
             var ctScore = Utilities.GetPlayers().Count(p => p.Team == CsTeam.CounterTerrorist && p.PawnIsAlive);
 
-            Console.WriteLine($"[GameflowControl] T score: {tScore}, CT score: {ctScore}");
+            Console.WriteLine($"{ModuleName} T score: {tScore}, CT score: {ctScore}");
 
             if (tScore > ctScore)
             {
-                knifeRoundWinner = 2; // T team won
-                Server.PrintToChatAll($"{modeChatPrefix} Terrorists won! Use !switch or !stay to choose side.");
-                Console.WriteLine("[GameflowControl] Terrorists won knife round");
+                knifeRoundWinner = CsTeam.Terrorist; // T team won
+                Server.PrintToChatAll($"{moduleChaPrefix} Terrorists won! Use !switch or !stay to choose side.");
+                Console.WriteLine($"{ModuleName} Terrorists won knife round");
             }
             else if (ctScore > tScore)
             {
-                knifeRoundWinner = 3; // CT team won
-                Server.PrintToChatAll($"{modeChatPrefix} Counter-Terrorists won! Use !switch or !stay to choose side.");
-                Console.WriteLine("[GameflowControl] Counter-Terrorists won knife round");
+                knifeRoundWinner = CsTeam.CounterTerrorist; // CT team won
+                Server.PrintToChatAll($"{moduleChaPrefix} Counter-Terrorists won! Use !switch or !stay to choose side.");
+                Console.WriteLine($"{ModuleName} Counter-Terrorists won knife round");
             }
             else
             {
                 // Tie - random winner
                 var random = new Random();
-                knifeRoundWinner = random.Next(2, 4); // 2 or 3
-                string winnerTeam = knifeRoundWinner == 2 ? "Terrorists" : "Counter-Terrorists";
-                Server.PrintToChatAll($"{modeChatPrefix} Tie! {winnerTeam} randomly selected. Use !switch or !stay to choose side.");
-                Console.WriteLine($"[GameflowControl] Tie in knife round, {winnerTeam} randomly selected");
+                knifeRoundWinner = random.Next(2, 4) == 2 ? CsTeam.Terrorist : CsTeam.CounterTerrorist; // 2 or 3
+                string winnerTeam = knifeRoundWinner == CsTeam.Terrorist ? "Terrorists" : "Counter-Terrorists";
+                Server.PrintToChatAll($"{moduleChaPrefix} Tie! {winnerTeam} randomly selected. Use !switch or !stay to choose side.");
+                Console.WriteLine($"{ModuleName} Tie in knife round, {winnerTeam} randomly selected");
             }
 
             waitingForSideChoice = true;
             knifeRoundInProgress = false;
 
-            Console.WriteLine($"[GameflowControl] DEBUG: Set waitingForSideChoice = {waitingForSideChoice}");
+            Console.WriteLine($"{ModuleName} DEBUG: Set waitingForSideChoice = {waitingForSideChoice}");
 
             // Start 60-second warmup for side choice (FACEIT style)
-            Console.WriteLine("[GameflowControl] Starting 60-second warmup for side choice...");
+            Console.WriteLine($"{ModuleName} Starting 60-second warmup for side choice...");
             Server.ExecuteCommand("mp_warmuptime 60");
             Server.ExecuteCommand("mp_warmup_pausetimer 0");
             Server.ExecuteCommand("mp_warmup_start");
@@ -186,41 +208,73 @@ public partial class GameflowControl : BasePlugin
             Server.ExecuteCommand("mp_death_drop_defuser 1");
             Server.ExecuteCommand("mp_death_drop_taser 1");
             Server.ExecuteCommand("mp_buy_allow_grenades 1");
-            Console.WriteLine("[GameflowControl] 60-second warmup started, waiting for side choice...");
-
+            Console.WriteLine($"{ModuleName} 60-second warmup started, waiting for side choice...");
+            StartSideChoiceTimer();
             // Auto-start match after 60 seconds if no choice made
-            AddTimer(60.0f, () =>
-            {
-                if (waitingForSideChoice)
-                {
-                    Console.WriteLine("[GameflowControl] 60 seconds passed, no side choice made. Auto-starting match...");
-                    Server.PrintToChatAll($"{modeChatPrefix} No side choice made in 60 seconds. Auto-starting match...");
+            // AddTimer(60.0f, () =>
+            // {
+            //     if (waitingForSideChoice)
+            //     {
+            //         Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
+            //         Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
 
-                    Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
-                    Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
-                    Server.ExecuteCommand("mp_startmoney 800");
-                    Server.ExecuteCommand("mp_buytime 20");
-                    Server.ExecuteCommand("mp_give_player_c4 1");
-                    Server.ExecuteCommand("mp_weapons_allow_map_placed 1");
-                    Server.ExecuteCommand("mp_weapons_allow_zeus 1");
-                    Server.ExecuteCommand("mp_defuser_allocation 2");
+            //         Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
+            //         Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
+            //         Server.ExecuteCommand("mp_startmoney 800");
+            //         Server.ExecuteCommand("mp_buytime 20");
+            //         Server.ExecuteCommand("mp_give_player_c4 1");
+            //         Server.ExecuteCommand("mp_weapons_allow_map_placed 1");
+            //         Server.ExecuteCommand("mp_weapons_allow_zeus 1");
+            //         Server.ExecuteCommand("mp_defuser_allocation 2");
 
-                    // Auto-choose stay (keep current sides)
-                    waitingForSideChoice = false;
-                    Server.ExecuteCommand("mp_halftime 1");
-                    Server.ExecuteCommand("mp_warmup_end");
+            //         // Auto-choose stay (keep current sides)
+            //         waitingForSideChoice = false;
+            //         Server.ExecuteCommand("mp_halftime 1");
+            //         Server.ExecuteCommand("mp_warmup_end");
 
-                    Console.WriteLine("[GameflowControl] Match auto-started after 60 seconds");
-                }
-            }, TimerFlags.STOP_ON_MAPCHANGE);
+            //         Console.WriteLine($"{ModuleName} Match auto-started after 60 seconds");
+            //     }
+            // }, TimerFlags.STOP_ON_MAPCHANGE);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[GameflowControl] ERROR in OnKnifeRoundEnd: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"{ModuleName} ERROR in OnKnifeRoundEnd: {ex.Message}");
+            Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
         }
     }
 
+    private void StartSideChoiceTimer()
+    {
+        sideChoiceTimer = AddTimer(60.0f, () =>
+        {
+            if (waitingForSideChoice)
+            {
+                AutoStartMatch();
+            }
+        }, TimerFlags.STOP_ON_MAPCHANGE);
+    }
+
+    private void AutoStartMatch()
+    {
+        Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
+        Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
+
+        Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
+        Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
+        Server.ExecuteCommand("mp_startmoney 800");
+        Server.ExecuteCommand("mp_buytime 20");
+        Server.ExecuteCommand("mp_give_player_c4 1");
+        Server.ExecuteCommand("mp_weapons_allow_map_placed 1");
+        Server.ExecuteCommand("mp_weapons_allow_zeus 1");
+        Server.ExecuteCommand("mp_defuser_allocation 2");
+
+        // Auto-choose stay (keep current sides)
+        waitingForSideChoice = false;
+        Server.ExecuteCommand("mp_halftime 1");
+        Server.ExecuteCommand("mp_warmup_end");
+
+        Console.WriteLine($"{ModuleName} Match auto-started after 60 seconds");
+    }
 
     private string GetPlayerKey(CCSPlayerController player)
     {
@@ -237,7 +291,7 @@ public partial class GameflowControl : BasePlugin
         string viewerKey = GetPlayerKey(requestingPlayer);
         bool hasDamage = false;
 
-        requestingPlayer.PrintToChat($"{modeChatPrefix} Current Round Damage");
+        requestingPlayer.PrintToChat($"{moduleChaPrefix} Current Round Damage");
         requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
 
         foreach (var other in Utilities.GetPlayers())
@@ -261,13 +315,13 @@ public partial class GameflowControl : BasePlugin
                     currentHealth = Math.Max(0, (int)other.Pawn.Value.Health);
 
                 string botTag = other.IsBot ? " [BOT]" : "";
-                requestingPlayer.PrintToChat($"{modeChatPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
+                requestingPlayer.PrintToChat($"{moduleChaPrefix} To: [{toDamage} / {toHits} hits] From: [{fromDamage} / {fromHits} hits] - {other.PlayerName}{botTag} ({currentHealth} hp)");
             }
         }
 
         if (!hasDamage)
         {
-            requestingPlayer.PrintToChat($"{modeChatPrefix} No damage dealt this round yet.");
+            requestingPlayer.PrintToChat($"{moduleChaPrefix} No damage dealt this round yet.");
         }
 
         requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
@@ -310,20 +364,24 @@ public partial class GameflowControl : BasePlugin
         try
         {
             if (!waitingForSideChoice) return;
+            if (player.Team == CsTeam.Spectator) return;
+            if (player.Team == CsTeam.None) return;
+            if (player.Team != knifeRoundWinner) return;
 
-            Console.WriteLine($"[GameflowControl] Player {player.PlayerName} chose: {choice}");
+
+            Console.WriteLine($"{ModuleName} Player {player.PlayerName} chose: {choice}");
 
             if (choice == "!stay" || choice == ".stay")
             {
                 // Keep current sides
-                Server.PrintToChatAll($"{modeChatPrefix} {player.PlayerName} chose to STAY. Starting match...");
-                Console.WriteLine("[GameflowControl] Side choice: STAY");
+                Server.PrintToChatAll($"{moduleChaPrefix} {player.PlayerName} chose to STAY. Starting match...");
+                Console.WriteLine($"{ModuleName} Side choice: STAY");
             }
             else if (choice == "!switch" || choice == ".switch")
             {
                 // Switch sides
-                Server.PrintToChatAll($"{modeChatPrefix} {player.PlayerName} chose to SWITCH sides. Starting match...");
-                Console.WriteLine("[GameflowControl] Side choice: SWITCH");
+                Server.PrintToChatAll($"{moduleChaPrefix} {player.PlayerName} chose to SWITCH sides. Starting match...");
+                Console.WriteLine($"{ModuleName} Side choice: SWITCH");
 
                 // Switch teams
                 foreach (var p in Utilities.GetPlayers())
@@ -343,12 +401,12 @@ public partial class GameflowControl : BasePlugin
             Server.ExecuteCommand("mp_halftime 1");
             Server.ExecuteCommand("mp_warmup_end");
 
-            Console.WriteLine("[GameflowControl] Match started after side choice");
+            Console.WriteLine($"{ModuleName} Match started after side choice");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[GameflowControl] ERROR in HandleSideChoice: {ex.Message}");
-            Console.WriteLine($"[GameflowControl] Stack trace: {ex.StackTrace}");
+            Console.WriteLine($"{ModuleName} ERROR in HandleSideChoice: {ex.Message}");
+            Console.WriteLine($"{ModuleName} Stack trace: {ex.StackTrace}");
         }
     }
 
