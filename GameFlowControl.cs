@@ -107,27 +107,21 @@ public partial class GameflowControl : BasePlugin
             // 🧠 Prevent pistol on spawn
             Server.ExecuteCommand("mp_ct_default_secondary none");
             Server.ExecuteCommand("mp_t_default_secondary none");
-
-            Server.PrintToChatAll($"{moduleChaPrefix} All players ready! Match starting in 10 seconds...");
             Server.ExecuteCommand("mp_warmuptime 12");
             Server.ExecuteCommand("mp_warmup_pausetimer 0");
 
-            // Delay 2s to ensure round starts cleanly
+            Server.PrintToChatAll($"{moduleChaPrefix} All players ready! Match starting in 10 seconds...");
+
             AddTimer(10.0f, () =>
             {
                 try
                 {
                     Server.ExecuteCommand("mp_roundtime 2");
-                    // Server.ExecuteCommand("mp_freezetime 2");
                     Server.ExecuteCommand("mp_halftime 0");
-                    Server.ExecuteCommand("mp_overtime_enable 0");
+                    // Server.ExecuteCommand("mp_overtime_enable 0");
 
                     // Money and economy settings
                     Server.ExecuteCommand("mp_startmoney 0");
-
-                    // Disable buy system completely
-                    Server.ExecuteCommand("mp_buy_anywhere 0");
-                    Server.ExecuteCommand("mp_buytime 0");
 
                     // Disable equipment
                     Server.ExecuteCommand("mp_give_player_c4 0");
@@ -135,9 +129,7 @@ public partial class GameflowControl : BasePlugin
                     Server.ExecuteCommand("mp_weapons_allow_zeus 0");
 
                     // Disable defuse kit
-                    Server.ExecuteCommand("mp_defuser_allocation 0");
-
-                    Server.PrintToChatAll($"{moduleChaPrefix} Knife-only round started! Winning team will pick side.");
+                    // Server.ExecuteCommand("mp_defuser_allocation 0");
                     Console.WriteLine($"{ModuleName} Knife round started successfully");
                 }
                 catch (Exception ex)
@@ -193,48 +185,9 @@ public partial class GameflowControl : BasePlugin
             waitingForSideChoice = true;
             knifeRoundInProgress = false;
 
-            Console.WriteLine($"{ModuleName} DEBUG: Set waitingForSideChoice = {waitingForSideChoice}");
-
-            // Start 60-second warmup for side choice (FACEIT style)
-            Console.WriteLine($"{ModuleName} Starting 60-second warmup for side choice...");
-            Server.ExecuteCommand("mp_warmuptime 60");
-            Server.ExecuteCommand("mp_warmup_pausetimer 0");
-            Server.ExecuteCommand("mp_warmup_start");
-
-            // Reset match settings for actual match
-            Server.ExecuteCommand("mp_freezetime 15");
-
-            Server.ExecuteCommand("mp_death_drop_gun 1");
-            Server.ExecuteCommand("mp_death_drop_defuser 1");
-            Server.ExecuteCommand("mp_death_drop_taser 1");
-            Server.ExecuteCommand("mp_buy_allow_grenades 1");
+            knifeRoundEndCommands();
             Console.WriteLine($"{ModuleName} 60-second warmup started, waiting for side choice...");
             StartSideChoiceTimer();
-            // Auto-start match after 60 seconds if no choice made
-            // AddTimer(60.0f, () =>
-            // {
-            //     if (waitingForSideChoice)
-            //     {
-            //         Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
-            //         Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
-
-            //         Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
-            //         Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
-            //         Server.ExecuteCommand("mp_startmoney 800");
-            //         Server.ExecuteCommand("mp_buytime 20");
-            //         Server.ExecuteCommand("mp_give_player_c4 1");
-            //         Server.ExecuteCommand("mp_weapons_allow_map_placed 1");
-            //         Server.ExecuteCommand("mp_weapons_allow_zeus 1");
-            //         Server.ExecuteCommand("mp_defuser_allocation 2");
-
-            //         // Auto-choose stay (keep current sides)
-            //         waitingForSideChoice = false;
-            //         Server.ExecuteCommand("mp_halftime 1");
-            //         Server.ExecuteCommand("mp_warmup_end");
-
-            //         Console.WriteLine($"{ModuleName} Match auto-started after 60 seconds");
-            //     }
-            // }, TimerFlags.STOP_ON_MAPCHANGE);
         }
         catch (Exception ex)
         {
@@ -249,32 +202,60 @@ public partial class GameflowControl : BasePlugin
         {
             if (waitingForSideChoice)
             {
-                AutoStartMatch();
+                Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
+                Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
+                StartMatch();
+                Console.WriteLine($"{ModuleName} Match auto-started after 60 seconds");
             }
         }, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
-    private void AutoStartMatch()
+    private void mapStartServerCommands()
     {
-        Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
-        Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
+        Server.ExecuteCommand("bot_quota 10");
+        Server.ExecuteCommand("bot_quota_mode fill");
+        Server.ExecuteCommand("mp_warmup_pausetimer 1");
+
+        Server.ExecuteCommand("mp_death_drop_gun 0");
+        Server.ExecuteCommand("mp_buy_allow_grenades 0");
+        // mp_death_drop_gun 0 baih uyd doorh 2 command hereggui
+        // Server.ExecuteCommand("mp_death_drop_defuser 0"); 
+        // Server.ExecuteCommand("mp_death_drop_taser 0");
+    }
+
+    private void knifeRoundEndCommands()
+    {
+        Console.WriteLine($"{ModuleName} DEBUG: Set waitingForSideChoice = {waitingForSideChoice}");
+        Console.WriteLine($"{ModuleName} Starting 60-second warmup for side choice...");
 
         Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
         Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
+
+        // Reset match settings for actual match
+        Server.ExecuteCommand("mp_freezetime 15");
+
+        Server.ExecuteCommand("mp_death_drop_gun 1");
+        Server.ExecuteCommand("mp_buy_allow_grenades 1");
+
+        Server.ExecuteCommand("mp_warmuptime 60");
+        Server.ExecuteCommand("mp_warmup_start");
+    }
+
+    private void StartMatch()
+    {
+        waitingForSideChoice = false;
+
         Server.ExecuteCommand("mp_startmoney 800");
         Server.ExecuteCommand("mp_buytime 20");
         Server.ExecuteCommand("mp_give_player_c4 1");
         Server.ExecuteCommand("mp_weapons_allow_map_placed 1");
         Server.ExecuteCommand("mp_weapons_allow_zeus 1");
-        Server.ExecuteCommand("mp_defuser_allocation 2");
+        // Server.ExecuteCommand("mp_defuser_allocation 1");
 
-        // Auto-choose stay (keep current sides)
-        waitingForSideChoice = false;
         Server.ExecuteCommand("mp_halftime 1");
         Server.ExecuteCommand("mp_warmup_end");
-
-        Console.WriteLine($"{ModuleName} Match auto-started after 60 seconds");
     }
+
 
     private string GetPlayerKey(CCSPlayerController player)
     {
@@ -398,8 +379,7 @@ public partial class GameflowControl : BasePlugin
 
             // End warmup and start match
             waitingForSideChoice = false;
-            Server.ExecuteCommand("mp_halftime 1");
-            Server.ExecuteCommand("mp_warmup_end");
+            StartMatch();
 
             Console.WriteLine($"{ModuleName} Match started after side choice");
         }

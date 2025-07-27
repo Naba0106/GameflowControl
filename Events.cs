@@ -14,13 +14,7 @@ public partial class GameflowControl
 
         Server.NextFrame(() =>
         {
-            Server.ExecuteCommand("bot_quota 10");
-            Server.ExecuteCommand("bot_quota_mode fill");
-            Server.ExecuteCommand("mp_warmup_pausetimer 1");
-            Server.ExecuteCommand("mp_death_drop_gun 0");
-            Server.ExecuteCommand("mp_buy_allow_grenades 0");
-            // Server.ExecuteCommand("mp_death_drop_defuser 0");
-            // Server.ExecuteCommand("mp_death_drop_taser 0");
+            mapStartServerCommands();
             Console.WriteLine("{moduleChaPrefix} Map started, commands executed in next frame.");
         });
 
@@ -39,6 +33,7 @@ public partial class GameflowControl
         RegisterEventHandler<EventPlayerChat>(OnPlayerChat);
         RegisterEventHandler<EventPlayerHurt>(OnPlayerHurt);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
+        RegisterEventHandler<EventRoundStart>(OnRoundStart);
     }
 
     private HookResult OnPlayerConnect(EventPlayerConnectFull @event, GameEventInfo info)
@@ -73,14 +68,6 @@ public partial class GameflowControl
     private HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
     {
         var player = @event.Userid;
-        Console.WriteLine($"{ModuleName} Player {player.PlayerName} spawned.");
-        Console.WriteLine($"{ModuleName} IsValidPlayer: {IsValidPlayer(player)}");
-        Console.WriteLine($"{ModuleName} IsBot: {player.IsBot}");
-        Console.WriteLine($"{ModuleName} IsAlive: {player.PawnIsAlive}");
-        Console.WriteLine($"{ModuleName} InGameMoneyServices: {player.InGameMoneyServices}");
-        Console.WriteLine($"{ModuleName} Account: {player.InGameMoneyServices?.Account}");
-        Console.WriteLine($"{ModuleName} StartAccount: {player.InGameMoneyServices?.StartAccount}");
-        Console.WriteLine($"{ModuleName} TotalCashSpent: {player.InGameMoneyServices?.TotalCashSpent}");
         if (!IsValidPlayer(player)) return HookResult.Continue;
 
         if (_readySystemEnabled)
@@ -267,12 +254,19 @@ public partial class GameflowControl
         // Check if this is a knife round
         if (knifeRoundInProgress)
         {
-            Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
-            Server.ExecuteCommand("mp_t_default_secondary weapon_glock");
             OnKnifeRoundEnd();
             return HookResult.Continue;
         }
 
+        return HookResult.Continue;
+    }
+
+    private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
+    {
+        if (knifeRoundInProgress)
+        {
+            Server.PrintToChatAll($"{moduleChaPrefix} Knife-only round started! Winning team will pick side.");
+        }
         return HookResult.Continue;
     }
 
