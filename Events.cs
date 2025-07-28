@@ -43,7 +43,7 @@ public partial class GameflowControl
         {
             if (!player.IsBot)
             {
-                PlayerReady[player.Slot] = false;
+                Config.Instance.playerReady[player.Slot] = false;
                 Console.WriteLine($"{ModuleName} Player {player.PlayerName} connected and marked as not ready.");
             }
             else
@@ -59,7 +59,7 @@ public partial class GameflowControl
         var player = @event.Userid;
         if (player != null && player.IsValid)
         {
-            PlayerReady.Remove(player.Slot);
+            Config.Instance.playerReady.Remove(player.Slot);
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} disconnected and removed from ready list.");
         }
         return HookResult.Continue;
@@ -70,7 +70,7 @@ public partial class GameflowControl
         var player = @event.Userid;
         if (!IsValidPlayer(player)) return HookResult.Continue;
 
-        if (_readySystemEnabled)
+        if (Config.Instance.readySystemEnabled)
         {
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} spawned and money set to 16000.");
             // Set player money to 16000 when ready system is disabled
@@ -79,20 +79,6 @@ public partial class GameflowControl
                 player.InGameMoneyServices.Account = 16000;
             }
         }
-
-        // Server.NextFrame(() =>
-        // {
-        //     // Only handle real players, not bots
-        //     if (player.IsBot) return;
-
-        //     if (!PlayerReady.ContainsKey(player.Slot) || PlayerReady[player.Slot])
-        //         return;
-
-        //     // Mark player as ready when they spawn
-        //     PlayerReady[player.Slot] = true;
-        //     player.PrintToChat($"{moduleChaPrefix} You have been automatically marked as READY.");
-        //     Console.WriteLine($"{ModuleName} Player {player.PlayerName} auto-marked as ready on spawn.");
-        // });
 
         return HookResult.Continue;
     }
@@ -112,49 +98,49 @@ public partial class GameflowControl
             return HookResult.Continue;
         }
 
-        if (msg == "!pause")
+        if (Config.Instance.PauseCommands.Contains(msg))
         {
             Server.ExecuteCommand("mp_pause_match");
-            player.PrintToChat($"{moduleChaPrefix} Match paused.");
+            PlayerToChat(player, $"{moduleChaPrefix} Match paused.");
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} paused the match.");
         }
-        else if (msg == "!unpause")
+        else if (Config.Instance.UnpauseCommands.Contains(msg))
         {
             Server.ExecuteCommand("mp_unpause_match");
-            player.PrintToChat($"{moduleChaPrefix} Match unpaused.");
+            PlayerToChat(player, $"{moduleChaPrefix} Match unpaused.");
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} unpaused the match.");
         }
-        else if (msg == "!ready" || msg == ".r" || msg == ".ready" && _readySystemEnabled)
+        else if (Config.Instance.ReadyCommands.Contains(msg) && Config.Instance.readySystemEnabled)
         {
-            PlayerReady[player.Slot] = true;
-            player.PrintToChat($"{moduleChaPrefix} You are now marked as READY.");
+            Config.Instance.playerReady[player.Slot] = true;
+            PlayerToChat(player, $"{moduleChaPrefix} You are now marked as READY.");
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} marked themselves as ready.");
             CheckReadyStatus();
         }
-        else if (msg == "!notready" || msg == ".nr" || msg == ".notready" && _readySystemEnabled)
+        else if (Config.Instance.NotReadyCommands.Contains(msg) && Config.Instance.readySystemEnabled)
         {
-            PlayerReady[player.Slot] = false;
-            player.PrintToChat($"{moduleChaPrefix} You are now marked as NOT READY.");
+            Config.Instance.playerReady[player.Slot] = false;
+            PlayerToChat(player, $"{moduleChaPrefix} You are now marked as NOT READY.");
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} marked themselves as not ready.");
             CheckReadyStatus();
         }
-        else if (msg == "!status")
+        else if (Config.Instance.StatusCommands.Contains(msg))
         {
             // Count only real players, exclude bots
             var realPlayers = Utilities.GetPlayers().Where(p => p != null && p.IsValid && !p.IsBot).ToList();
             int total = realPlayers.Count;
-            int ready = PlayerReady.Values.Count(v => v);
-            player.PrintToChat($"{moduleChaPrefix} Ready Status: {ready}/{total} real players are ready (bots excluded).");
+            int ready = Config.Instance.playerReady.Values.Count(v => v);
+            PlayerToChat(player, $"{moduleChaPrefix} Ready Status: {ready}/{total} real players are ready (bots excluded).");
         }
-        else if (msg == "!damage")
+        else if (Config.Instance.DamageCommands.Contains(msg))
         {
             ShowDamageStats(player);
         }
-        else if (msg == "!debug")
+        else if (Config.Instance.DebugCommands.Contains(msg))
         {
             ShowDebugInfo(player);
         }
-        else if (waitingForSideChoice && (msg == "!switch" || msg == ".switch" || msg == "!stay" || msg == ".stay"))
+        else if (Config.Instance.waitingForSideChoice && (Config.Instance.SwitchCommands.Contains(msg) || Config.Instance.StayCommands.Contains(msg)))
         {
             HandleSideChoice(msg, player);
             return HookResult.Continue;
@@ -191,18 +177,18 @@ public partial class GameflowControl
         }
 
         // Init dictionaries
-        if (!DamageMatrix.ContainsKey(attackerKey))
-            DamageMatrix[attackerKey] = new Dictionary<string, int>();
-        if (!HitMatrix.ContainsKey(attackerKey))
-            HitMatrix[attackerKey] = new Dictionary<string, int>();
+        if (!Config.Instance.damageMatrix.ContainsKey(attackerKey))
+            Config.Instance.damageMatrix[attackerKey] = new Dictionary<string, int>();
+        if (!Config.Instance.hitMatrix.ContainsKey(attackerKey))
+            Config.Instance.hitMatrix[attackerKey] = new Dictionary<string, int>();
 
         // Cap to 100 per target
-        int existingDamage = DamageMatrix[attackerKey].GetValueOrDefault(victimKey);
+        int existingDamage = Config.Instance.damageMatrix[attackerKey].GetValueOrDefault(victimKey);
         int cappedDamage = Math.Max(0, Math.Min(actualDamage, 100 - existingDamage));
 
         // Store
-        DamageMatrix[attackerKey][victimKey] = existingDamage + cappedDamage;
-        HitMatrix[attackerKey][victimKey] = HitMatrix[attackerKey].GetValueOrDefault(victimKey) + 1;
+        Config.Instance.damageMatrix[attackerKey][victimKey] = existingDamage + cappedDamage;
+        Config.Instance.hitMatrix[attackerKey][victimKey] = Config.Instance.hitMatrix[attackerKey].GetValueOrDefault(victimKey) + 1;
 
         // Debug log
         Console.WriteLine($"{ModuleName} {attacker.PlayerName} → {victim.PlayerName}: +{cappedDamage} dmg (capped)");
@@ -230,11 +216,11 @@ public partial class GameflowControl
 
                 string otherKey = GetPlayerKey(other);
 
-                int toDamage = DamageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-                int fromDamage = DamageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+                int toDamage = Config.Instance.damageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+                int fromDamage = Config.Instance.damageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
 
-                int toHits = HitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-                int fromHits = HitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+                int toHits = Config.Instance.hitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+                int fromHits = Config.Instance.hitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
 
                 int currentHealth = 0;
                 if (other.PawnIsAlive && other.Pawn?.Value != null)
@@ -248,11 +234,11 @@ public partial class GameflowControl
         }
 
         // Reset for next round
-        DamageMatrix.Clear();
-        HitMatrix.Clear();
+        Config.Instance.damageMatrix.Clear();
+        Config.Instance.hitMatrix.Clear();
 
         // Check if this is a knife round
-        if (knifeRoundInProgress)
+        if (Config.Instance.knifeRoundInProgress)
         {
             OnKnifeRoundEnd();
             return HookResult.Continue;
@@ -263,7 +249,7 @@ public partial class GameflowControl
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
-        if (knifeRoundInProgress)
+        if (Config.Instance.knifeRoundInProgress)
         {
             Server.PrintToChatAll($"{moduleChaPrefix} Knife-only round started! Winning team will pick side.");
         }

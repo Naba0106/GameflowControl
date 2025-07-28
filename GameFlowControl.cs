@@ -8,7 +8,6 @@ using CounterStrikeSharp.API.Modules.Events;
 using System.Linq;
 using System.Collections.Generic;
 
-
 namespace GameflowControl;
 
 [MinimumApiVersion(320)]
@@ -18,16 +17,7 @@ public partial class GameflowControl : BasePlugin
     public override string ModuleName => "CS2 Gameflow Control";
     public override string ModuleAuthor => "Naranbat";
     public override string ModuleVersion => "1.0";
-    private readonly Dictionary<string, Dictionary<string, int>> DamageMatrix = new();
-    private readonly Dictionary<string, Dictionary<string, int>> HitMatrix = new();
 
-    private readonly Dictionary<int, bool> PlayerReady = new();
-    private bool _readySystemEnabled = true;
-
-    private bool knifeRoundInProgress = false;
-    private bool waitingForSideChoice = false;
-    private CsTeam knifeRoundWinner = CsTeam.None; // 2 = T, 3 = CT
-    private CounterStrikeSharp.API.Modules.Timers.Timer? sideChoiceTimer;
 
     public override void Load(bool hotReload)
     {
@@ -58,35 +48,36 @@ public partial class GameflowControl : BasePlugin
 
     private void ResetGame()
     {
-        knifeRoundInProgress = false;
-        waitingForSideChoice = false;
-        knifeRoundWinner = CsTeam.None;
-        sideChoiceTimer?.Kill();
-        sideChoiceTimer = null;
+        // Config.Instance.MaxPlayers = 15;
+        Config.Instance.knifeRoundInProgress = false;
+        Config.Instance.waitingForSideChoice = false;
+        Config.Instance.knifeRoundWinner = CsTeam.None;
+        Config.Instance.sideChoiceTimer?.Kill();
+        Config.Instance.sideChoiceTimer = null;
     }
 
     private void ResetReadySystem()
     {
-        _readySystemEnabled = true;
-        PlayerReady.Clear();
+        Config.Instance.readySystemEnabled = true;
+        Config.Instance.playerReady.Clear();
     }
 
     private void CheckReadyStatus()
     {
         try
         {
-            if (!_readySystemEnabled) return;
+            if (!Config.Instance.readySystemEnabled) return;
 
             var realPlayers = Utilities.GetPlayers().Where(p => p != null && p.IsValid && !p.IsBot).ToList();
             int total = realPlayers.Count;
-            int ready = PlayerReady.Values.Count(v => v);
+            int ready = Config.Instance.playerReady.Values.Count(v => v);
 
             Console.WriteLine($"{ModuleName} {ready}/{total} real players are ready (bots excluded).");
 
             if (total > 0 && ready == total)
             {
                 Console.WriteLine($"{ModuleName} All players ready! Starting match in 10 seconds...");
-                _readySystemEnabled = false;
+                Config.Instance.readySystemEnabled = false;
                 StartKnifeRound();
             }
         }
@@ -102,7 +93,7 @@ public partial class GameflowControl : BasePlugin
         try
         {
             Console.WriteLine($"{ModuleName} Starting knife round...");
-            knifeRoundInProgress = true;
+            Config.Instance.knifeRoundInProgress = true;
 
             // 🧠 Prevent pistol on spawn
             Server.ExecuteCommand("mp_ct_default_secondary none");
@@ -152,7 +143,7 @@ public partial class GameflowControl : BasePlugin
         {
             Console.WriteLine($"{ModuleName} Knife round ended, determining winner...");
 
-            if (!knifeRoundInProgress) return;
+            if (!Config.Instance.knifeRoundInProgress) return;
 
             // Determine winner based on team scores
             var tScore = Utilities.GetPlayers().Count(p => p.Team == CsTeam.Terrorist && p.PawnIsAlive);
@@ -162,13 +153,13 @@ public partial class GameflowControl : BasePlugin
 
             if (tScore > ctScore)
             {
-                knifeRoundWinner = CsTeam.Terrorist; // T team won
+                Config.Instance.knifeRoundWinner = CsTeam.Terrorist; // T team won
                 Server.PrintToChatAll($"{moduleChaPrefix} Terrorists won! Use !switch or !stay to choose side.");
                 Console.WriteLine($"{ModuleName} Terrorists won knife round");
             }
             else if (ctScore > tScore)
             {
-                knifeRoundWinner = CsTeam.CounterTerrorist; // CT team won
+                Config.Instance.knifeRoundWinner = CsTeam.CounterTerrorist; // CT team won
                 Server.PrintToChatAll($"{moduleChaPrefix} Counter-Terrorists won! Use !switch or !stay to choose side.");
                 Console.WriteLine($"{ModuleName} Counter-Terrorists won knife round");
             }
@@ -176,14 +167,14 @@ public partial class GameflowControl : BasePlugin
             {
                 // Tie - random winner
                 var random = new Random();
-                knifeRoundWinner = random.Next(2, 4) == 2 ? CsTeam.Terrorist : CsTeam.CounterTerrorist; // 2 or 3
-                string winnerTeam = knifeRoundWinner == CsTeam.Terrorist ? "Terrorists" : "Counter-Terrorists";
+                Config.Instance.knifeRoundWinner = random.Next(2, 4) == 2 ? CsTeam.Terrorist : CsTeam.CounterTerrorist; // 2 or 3
+                string winnerTeam = Config.Instance.knifeRoundWinner == CsTeam.Terrorist ? "Terrorists" : "Counter-Terrorists";
                 Server.PrintToChatAll($"{moduleChaPrefix} Tie! {winnerTeam} randomly selected. Use !switch or !stay to choose side.");
                 Console.WriteLine($"{ModuleName} Tie in knife round, {winnerTeam} randomly selected");
             }
 
-            waitingForSideChoice = true;
-            knifeRoundInProgress = false;
+            Config.Instance.waitingForSideChoice = true;
+            Config.Instance.knifeRoundInProgress = false;
 
             knifeRoundEndCommands();
             Console.WriteLine($"{ModuleName} 60-second warmup started, waiting for side choice...");
@@ -198,9 +189,9 @@ public partial class GameflowControl : BasePlugin
 
     private void StartSideChoiceTimer()
     {
-        sideChoiceTimer = AddTimer(60.0f, () =>
+        Config.Instance.sideChoiceTimer = AddTimer(60.0f, () =>
         {
-            if (waitingForSideChoice)
+            if (Config.Instance.waitingForSideChoice)
             {
                 Console.WriteLine($"{ModuleName} 60 seconds passed, no side choice made. Auto-starting match...");
                 Server.PrintToChatAll($"{moduleChaPrefix} No side choice made in 60 seconds. Auto-starting match...");
@@ -225,7 +216,7 @@ public partial class GameflowControl : BasePlugin
 
     private void knifeRoundEndCommands()
     {
-        Console.WriteLine($"{ModuleName} DEBUG: Set waitingForSideChoice = {waitingForSideChoice}");
+        Console.WriteLine($"{ModuleName} DEBUG: Set waitingForSideChoice = {Config.Instance.waitingForSideChoice}");
         Console.WriteLine($"{ModuleName} Starting 60-second warmup for side choice...");
 
         Server.ExecuteCommand("mp_ct_default_secondary weapon_hkp2000");
@@ -243,7 +234,7 @@ public partial class GameflowControl : BasePlugin
 
     private void StartMatch()
     {
-        waitingForSideChoice = false;
+        Config.Instance.waitingForSideChoice = false;
 
         Server.ExecuteCommand("mp_startmoney 800");
         Server.ExecuteCommand("mp_buytime 20");
@@ -254,17 +245,6 @@ public partial class GameflowControl : BasePlugin
 
         Server.ExecuteCommand("mp_halftime 1");
         Server.ExecuteCommand("mp_warmup_end");
-    }
-
-
-    private string GetPlayerKey(CCSPlayerController player)
-    {
-        return player.IsBot ? $"BOT_{player.PlayerName}" : player.SteamID.ToString();
-    }
-
-    private static bool IsValidPlayer(CCSPlayerController? player)
-    {
-        return player != null && player.IsValid && !player.IsBot;// && player.PawnIsAlive;
     }
 
     private void ShowDamageStats(CCSPlayerController requestingPlayer)
@@ -282,11 +262,11 @@ public partial class GameflowControl : BasePlugin
 
             string otherKey = GetPlayerKey(other);
 
-            int toDamage = DamageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-            int fromDamage = DamageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+            int toDamage = Config.Instance.damageMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+            int fromDamage = Config.Instance.damageMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
 
-            int toHits = HitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
-            int fromHits = HitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
+            int toHits = Config.Instance.hitMatrix.GetValueOrDefault(viewerKey)?.GetValueOrDefault(otherKey) ?? 0;
+            int fromHits = Config.Instance.hitMatrix.GetValueOrDefault(otherKey)?.GetValueOrDefault(viewerKey) ?? 0;
 
             if (toDamage > 0 || fromDamage > 0)
             {
@@ -308,57 +288,25 @@ public partial class GameflowControl : BasePlugin
         requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
     }
 
-    private void ShowDebugInfo(CCSPlayerController requestingPlayer)
-    {
-        requestingPlayer.PrintToChat(" \x04[DEBUG] Damage Matrix Info\x01");
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-
-        requestingPlayer.PrintToChat($" \x01 DamageMatrix entries: {DamageMatrix.Count}");
-        requestingPlayer.PrintToChat($" \x01 HitMatrix entries: {HitMatrix.Count}");
-
-        requestingPlayer.PrintToChat(" \x01--- Damage Matrix ---");
-        foreach (var attackerEntry in DamageMatrix)
-        {
-            string attackerName = "Unknown";
-            var attacker = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == attackerEntry.Key);
-            if (attacker != null)
-                attackerName = attacker.PlayerName + (attacker.IsBot ? " [BOT]" : "");
-
-            requestingPlayer.PrintToChat($" \x01{attackerName} ({attackerEntry.Key}):");
-
-            foreach (var victimEntry in attackerEntry.Value)
-            {
-                string victimName = "Unknown";
-                var victim = Utilities.GetPlayers().FirstOrDefault(p => GetPlayerKey(p) == victimEntry.Key);
-                if (victim != null)
-                    victimName = victim.PlayerName + (victim.IsBot ? " [BOT]" : "");
-
-                requestingPlayer.PrintToChat($" \x01  → {victimName}: {victimEntry.Value} damage");
-            }
-        }
-
-        requestingPlayer.PrintToChat(" \x02━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x01");
-    }
-
     private void HandleSideChoice(string choice, CCSPlayerController player)
     {
         try
         {
-            if (!waitingForSideChoice) return;
+            if (!Config.Instance.waitingForSideChoice) return;
             if (player.Team == CsTeam.Spectator) return;
             if (player.Team == CsTeam.None) return;
-            if (player.Team != knifeRoundWinner) return;
+            if (player.Team != Config.Instance.knifeRoundWinner) return;
 
 
             Console.WriteLine($"{ModuleName} Player {player.PlayerName} chose: {choice}");
 
-            if (choice == "!stay" || choice == ".stay")
+            if (Config.Instance.StayCommands.Contains(choice))
             {
                 // Keep current sides
                 Server.PrintToChatAll($"{moduleChaPrefix} {player.PlayerName} chose to STAY. Starting match...");
                 Console.WriteLine($"{ModuleName} Side choice: STAY");
             }
-            else if (choice == "!switch" || choice == ".switch")
+            else if (Config.Instance.SwitchCommands.Contains(choice))
             {
                 // Switch sides
                 Server.PrintToChatAll($"{moduleChaPrefix} {player.PlayerName} chose to SWITCH sides. Starting match...");
@@ -378,7 +326,7 @@ public partial class GameflowControl : BasePlugin
             }
 
             // End warmup and start match
-            waitingForSideChoice = false;
+            Config.Instance.waitingForSideChoice = false;
             StartMatch();
 
             Console.WriteLine($"{ModuleName} Match started after side choice");
